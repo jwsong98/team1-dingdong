@@ -1,5 +1,5 @@
-CREATE DATABASE IF NOT EXISTS dingdong;
-USE dingdong;
+CREATE DATABASE IF NOT EXISTS dingdong_test;
+USE dingdong_test;
 
 CREATE TABLE IF NOT EXISTS bus (
                                    id BIGINT NOT NULL AUTO_INCREMENT,

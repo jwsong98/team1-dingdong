@@ -35,3 +35,14 @@ fcm:
   silent: ${FCM_SILENT}
   requireInteraction: ${FCM_REQUIRE_INTERACTION}
   link: ${FCM_TOUCH_LINK}
+
+# prometheus endpoint expose
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  prometheus:
+    metrics:
+      export:
+        enabled: true

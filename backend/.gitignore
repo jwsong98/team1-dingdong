@@ -26,7 +26,7 @@ bin/
 out/
 !**/src/main/**/out/
 !**/src/test/**/out/
-application-prod.yml
+src/main/resources/application-prod.yml
 .env
 .env.prod
 
@@ -46,3 +46,5 @@ src/main/resources/response.json
 
 ### FCM Secret Key ###
 ding-dong-firebase.json
+
+.env.test

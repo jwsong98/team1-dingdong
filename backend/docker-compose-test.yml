@@ -1,0 +1,85 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: testDB
+    environment:
+      MYSQL_ROOT_PASSWORD: 4313
+      MYSQL_USER: root
+      MYSQL_PASSWORD: 4313
+    volumes:
+      - ./.database/test:/docker-entrypoint-initdb.d  # dump 또는 DDL 파일을 이 디렉토리에 두면 초기화 시 적용됨
+    ports:
+      - "3307:3306"
+    networks:
+      - app-net
+
+  app:
+    image: shortboy710/dingdong:latest
+    container_name: dingdong
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env.test
+    ports:
+      - "8080:8080"
+      - "9010:9010"
+    networks:
+      - app-net
+    volumes:
+      - ./key:/app/key
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    networks:
+      - app-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - app-net
+
+  node-exporter:
+    image: quay.io/prometheus/node-exporter:latest
+    container_name: node-exporter
+    network_mode: host    # 호스트 네트워크 모드로 실행 (Linux 기준)
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.ignored-mount-points="^/(sys|proc|dev|host|etc)($|/)"'
+
+  gatling:
+    image: denvazh/gatling:latest
+    container_name: gatling
+    volumes:
+      - ./gatling/scripts:/opt/gatling/user-files/simulations:ro  # 로컬에서 제작한 Gatling 스크립트
+      - ./gatling/reports:/opt/gatling/results                   # 선택사항: 테스트 결과 리포트 저장 위치
+    ports:
+      - "8081:8081"  # (필요 시) Gatling 웹 인터페이스 포트
+    networks:
+      - app-net
+
+networks:
+  app-net:
+    driver: bridge
+
+volumes:
+  grafana_data:
