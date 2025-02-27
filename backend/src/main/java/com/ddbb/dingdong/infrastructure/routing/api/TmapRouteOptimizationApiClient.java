@@ -59,8 +59,8 @@ public class TmapRouteOptimizationApiClient {
 
         } else {
             status = "SUCCESS";
-            Gson responseGson = new GsonBuilder().setPrettyPrinting().create();
-            System.out.println(responseGson.toJson(response));
+//            Gson responseGson = new GsonBuilder().setPrettyPrinting().create();
+//            System.out.println(responseGson.toJson(response));
         }
         log.info("Optimize End: {}시 {}분 {}초, 소요 시간: {}초, 응답 성공 여부: {}", end.getHour(), end.getMinute(), end.getSecond(), end.getSecond()-start.getSecond(), status);
         return response;
