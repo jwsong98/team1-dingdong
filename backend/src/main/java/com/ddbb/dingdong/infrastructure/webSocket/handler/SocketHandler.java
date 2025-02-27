@@ -44,7 +44,7 @@ public class SocketHandler extends TextWebSocketHandler {
     public void afterConnectionClosed(WebSocketSession session, CloseStatus closeStatus) throws Exception {
         AuthUser authUser = (AuthUser)session.getAttributes().get(SESSION_NAME);
 
-        log.info("user({}) disconnected", authUser.id());
+        log.info("user({}) disconnected : {} {}", authUser.id(), closeStatus.getReason(), closeStatus.getCode());
         if (closeStatus != CustomCloseStatus.DUPLICATE_WEBSOCKET) {
             socketRepository.remove(authUser.id());
         }
