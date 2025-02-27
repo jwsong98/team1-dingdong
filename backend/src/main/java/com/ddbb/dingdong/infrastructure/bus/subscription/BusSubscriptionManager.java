@@ -29,8 +29,10 @@ public class BusSubscriptionManager {
     public void subscribe(long busId, UserSubscription subscription) {
         StoppableSemaphore lock = lockManager.getLock(busId)
                 .orElseThrow(() -> new DomainException(BusErrors.BUS_NOT_INITIATED));
+        boolean alreadyReleased = false;
         try {
             if (!lock.acquire(true)) {
+                alreadyReleased = true;
                 throw new DomainException(BusErrors.BUS_ALREADY_STOPPED);
             }
             Map<Long, CancelableSubscriber<ByteBuffer>> busChannel = subscribers.computeIfAbsent(busId, id -> new TreeMap<>());
@@ -46,15 +48,19 @@ public class BusSubscriptionManager {
             log.info(e.getMessage());
             throw new DomainException(BusErrors.BUS_SUBSCRIBE_ERROR);
         } finally {
-            lock.release();
+            if (!alreadyReleased) {
+                lock.release();
+            }
         }
     }
 
     public void addPublishers(Long busId, SubmissionPublisher<ByteBuffer> publisher) {
         StoppableSemaphore lock = lockManager.getLock(busId)
                 .orElseThrow(() -> new DomainException(BusErrors.BUS_NOT_INITIATED));
+        boolean alreadyReleased = false;
         try {
             if (!lock.acquire(true)) {
+                alreadyReleased = true;
                 throw new DomainException(BusErrors.BUS_ALREADY_STOPPED);
             }
             if (!publishers.containsKey(busId)) {
@@ -68,7 +74,9 @@ public class BusSubscriptionManager {
             log.debug(e.getMessage());
             throw new DomainException(BusErrors.BUS_START_ERROR);
         } finally {
-            lock.release();
+            if (!alreadyReleased) {
+                lock.release();
+            }
         }
     }
 
@@ -76,8 +84,10 @@ public class BusSubscriptionManager {
         log.info("unsubscribe: busId={}, userId={}", busId, userId);
         StoppableSemaphore lock = lockManager.getLock(busId)
                 .orElseThrow(() -> new DomainException(BusErrors.BUS_NOT_INITIATED));
+        boolean alreadyReleased = false;
         try {
             if (!lock.acquire(false)) {
+                alreadyReleased = true;
                 return;
             }
             subscribers.computeIfPresent(busId, (id, busChannel) -> {
@@ -92,7 +102,9 @@ public class BusSubscriptionManager {
             log.info(e.getMessage());
             throw new DomainException(BusErrors.BUS_UNSUBSCRIBE_ERROR);
         } finally {
-            lock.release();
+            if (!alreadyReleased) {
+                lock.release();
+            }
         }
     }
 
@@ -104,11 +116,13 @@ public class BusSubscriptionManager {
     public void cleanPublisher(Long busId) {
         StoppableSemaphore lock = lockManager.getLock(busId)
                 .orElseThrow(() -> new DomainException(BusErrors.BUS_NOT_INITIATED));
+        boolean alreadyReleased = false;
         try {
             log.info("before bus {} has been cleaned pub : {} sub :{}", busId, publishers.size(), subscribers.size());
             busScheduleManagement.updateBusSchedule(busId, OperationStatus.ENDED);
             lockManager.removeLock(busId);
             if (!lock.acquire(false)) {
+                alreadyReleased = true;
                 return;
             }
             SubmissionPublisher<ByteBuffer> publisher = publishers.remove(busId);
@@ -120,7 +134,9 @@ public class BusSubscriptionManager {
             log.info(e.getMessage());
             throw new DomainException(BusErrors.STOP_BUS_ERROR);
         } finally {
-            lock.release();
+            if (!alreadyReleased) {
+                lock.release();
+            }
         }
     }
 
@@ -134,11 +150,15 @@ public class BusSubscriptionManager {
     public void removeRefOnly(Long busId) {
         StoppableSemaphore lock = lockManager.getLock(busId)
                 .orElseThrow(() -> new DomainException(BusErrors.BUS_NOT_INITIATED));
+        boolean alreadyReleased = false;
         try {
             log.info("before bus {} has been cleaned pub : {} sub :{}", busId, publishers.size(), subscribers.size());
             busScheduleManagement.updateBusSchedule(busId, OperationStatus.ENDED);
             lockManager.removeLock(busId);
-            lock.acquire(false);
+            if (!lock.acquire(false)) {
+                alreadyReleased = true;
+                return;
+            }
             publishers.remove(busId);
             subscribers.remove(busId);
 
@@ -147,7 +167,9 @@ public class BusSubscriptionManager {
             log.info(e.getMessage());
             throw new DomainException(BusErrors.STOP_BUS_ERROR);
         } finally {
-            lock.release();
+            if (!alreadyReleased) {
+                lock.release();
+            }
         }
     }
 }
