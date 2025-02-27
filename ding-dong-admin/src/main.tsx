@@ -12,9 +12,7 @@ const loader = new Loader({
 loader.load().then(() => {
   window.google = google;
   ReactDOM.createRoot(document.getElementById('root')!).render(
-    <React.StrictMode>
       <App />
-    </React.StrictMode>,
   );
 }).catch(e => {
   console.error('Error loading Google Maps:', e);

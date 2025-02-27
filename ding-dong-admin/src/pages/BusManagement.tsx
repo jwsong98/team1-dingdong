@@ -152,7 +152,6 @@ function BusManagement() {
   const [isRouteLoaded, setIsRouteLoaded] = useState(false);
   const [routePath, setRoutePath] = useState<google.maps.LatLng[]>([]);
   const [busLocation, setBusLocation] = useState<google.maps.LatLngLiteral | null>(null);
-  const [isSubscribed, setIsSubscribed] = useState(false);
   const [subscribeId, setSubscribeId] = useState('');
   const [unsubscribeId, setUnsubscribeId] = useState('');
   const [currentSubscribedId, setCurrentSubscribedId] = useState<string | null>(null);
@@ -245,16 +244,17 @@ function BusManagement() {
   const handleStopBus = async () => {
     try {
       await httpClient.delete(`/api/admin/bus/${scheduleId}`)
-      .then(() => {
-        console.log('Bus stopped successfully');
-      });
-    } catch (error) {
-      console.error('Error unsubscribing from bus:', error);
-    }
-  };
+        .then(() => {
+          console.log('Bus stopped successfully');
+          console.log('운행 종료: 구독 해제 시도');
+          setCurrentSubscribedId(null);
+          setBusLocation(null);
+          handleClearRoute();
+        });
 
-  const handleReconnect = () => {
-    connect();
+    } catch (error) {
+      console.error('Error stopping bus:', error);
+    }
   };
 
   const handleClearRoute = () => {
@@ -286,20 +286,17 @@ function BusManagement() {
     try {
       setApiStatus(prev => ({ ...prev, subscription: { status: 'pending' } }));
 
-      // 기존 구독 해제
-      if (currentSubscribedId && currentSubscribedId !== subscribeId) {
-        await httpClient.delete(`/api/bus/subscription/${currentSubscribedId}`);
-        console.log(`기존 구독 해제: ${currentSubscribedId}`);
-      }
-
-      // 새로운 구독
+      // 새로운 구독 시작
+      console.log('새로운 구독 시도:', subscribeId);
       const response = await httpClient.post(`/api/bus/subscription/${subscribeId}`);
+      setCurrentSubscribedId(subscribeId);
       setApiStatus(prev => ({ 
         ...prev, 
         subscription: { status: 'success', code: response.status } 
       }));
-      setCurrentSubscribedId(subscribeId); // 최근 구독 ID로 설정
+
     } catch (error: any) {
+      console.error('구독 처리 중 오류:', error);
       setApiStatus(prev => ({ 
         ...prev, 
         subscription: { 
@@ -307,25 +304,26 @@ function BusManagement() {
           code: error.response?.status || 500 
         } 
       }));
-      console.error('버스 구독 처리 중 오류:', error);
     }
   };
 
   const handleUnsubscribe = async () => {
-    if (!unsubscribeId) return;
+    if (!currentSubscribedId) return;
 
     try {
       setApiStatus(prev => ({ ...prev, subscription: { status: 'pending' } }));
-      const response = await httpClient.delete(`/api/bus/subscription/${unsubscribeId}`);
+      
+      console.log('구독 해제 시도:', currentSubscribedId);
+      await httpClient.delete(`/api/bus/subscription/${currentSubscribedId}`);
+      setCurrentSubscribedId(null);
+      setBusLocation(null);
+      
       setApiStatus(prev => ({ 
         ...prev, 
-        subscription: { status: 'success', code: response.status } 
+        subscription: { status: 'success' } 
       }));
-      if (unsubscribeId === currentSubscribedId) {
-        setCurrentSubscribedId(null);
-      }
-      setUnsubscribeId('');
     } catch (error: any) {
+      console.error('구독 해제 중 오류:', error);
       setApiStatus(prev => ({ 
         ...prev, 
         subscription: { 
@@ -333,47 +331,77 @@ function BusManagement() {
           code: error.response?.status || 500 
         } 
       }));
-      console.error('버스 구독 해제 중 오류:', error);
     }
   };
 
   useEffect(() => {
-    if (webSocket instanceof WebSocket && scheduleId && isSubscribed) {
+    if (webSocket instanceof WebSocket) {
       webSocket.binaryType = 'arraybuffer';
+      
       const handleMessage = (message: MessageEvent) => {
+        console.log('WebSocket 메시지 수신');
         try {
           const arrayBuffer = message.data;
           const dataView = new DataView(arrayBuffer);
-
           const longitude = dataView.getFloat64(0, false);
           const latitude = dataView.getFloat64(8, false);
-
           setBusLocation({ lat: latitude, lng: longitude });
         } catch (error) {
           console.error('Error parsing WebSocket message:', error);
         }
       };
 
-      webSocket.addEventListener("message", handleMessage);
+      let reconnectAttempts = 0;
+      const maxReconnectAttempts = 3;
+      const baseDelay = 5000;
 
-      webSocket.addEventListener("close", () => {
-        if (isSubscribed) {
-          handleSubscribe(); // 소켓이 끊겼을 때 다시 구독
+      const handleClose = () => {
+        console.log('웹소켓 연결 끊김');
+        if (currentSubscribedId && reconnectAttempts < maxReconnectAttempts) {
+          const delay = baseDelay * Math.pow(2, reconnectAttempts);
+          console.log(`재연결 시도 ${reconnectAttempts + 1}/${maxReconnectAttempts}, ${delay/1000}초 후 시도...`);
+          
+          setTimeout(() => {
+            connect();
+            reconnectAttempts++;
+          }, delay);
+        } else if (reconnectAttempts >= maxReconnectAttempts) {
+          console.log('최대 재연결 시도 횟수 도달. 수동 재연결이 필요합니다.');
         }
-      });
+      };
+
+      webSocket.addEventListener("message", handleMessage);
+      webSocket.addEventListener("close", handleClose);
 
       return () => {
         webSocket.removeEventListener("message", handleMessage);
-        webSocket.removeEventListener("close", handleSubscribe);
+        webSocket.removeEventListener("close", handleClose);
       };
     }
-  }, [webSocket, scheduleId, isSubscribed]);
+  }, [webSocket, currentSubscribedId, connect]);
 
   useEffect(() => {
     if (map && busLocation) {
       map.panTo(busLocation);
     }
   }, [busLocation, map]);
+
+  useEffect(() => {
+    // Cleanup function
+    return () => {
+      // 페이지를 떠날 때 구독 중이었다면 해제
+      if (currentSubscribedId) {
+        console.log('페이지 이탈: 구독 해제 시도:', currentSubscribedId);
+        httpClient.delete(`/api/bus/subscription/${currentSubscribedId}`)
+          .then(() => {
+            console.log('구독 해제 완료');
+          })
+          .catch(error => {
+            console.error('구독 해제 중 오류:', error);
+          });
+      }
+    };
+  }, [currentSubscribedId]);
 
   return (
     <Container>
@@ -384,7 +412,7 @@ function BusManagement() {
             {webSocket ? '웹소켓 연결됨' : '웹소켓 연결 끊김'}
           </StatusText>
           {!webSocket && (
-            <Button onClick={handleReconnect}>재연결</Button>
+            <Button onClick={connect}>재연결</Button>
           )}
         </StatusGroup>
 
@@ -455,22 +483,17 @@ function BusManagement() {
               value={subscribeId}
               onChange={(e) => setSubscribeId(e.target.value)}
               placeholder="구독할 버스 ID 입력"
+              disabled={!!currentSubscribedId}
             />
             <Button 
               onClick={handleSubscribe}
-              disabled={!subscribeId || subscribeId === currentSubscribedId}
+              disabled={!subscribeId || !!currentSubscribedId}
             >
               구독
             </Button>
-            <Input
-              type="text"
-              value={unsubscribeId}
-              onChange={(e) => setUnsubscribeId(e.target.value)}
-              placeholder="구독 해제할 버스 ID 입력"
-            />
             <Button 
               onClick={handleUnsubscribe}
-              disabled={!unsubscribeId}
+              disabled={!currentSubscribedId}
             >
               구독 해제
             </Button>
