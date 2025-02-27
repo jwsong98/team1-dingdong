@@ -27,6 +27,7 @@ public class BusSubscriptionManager {
 
 
     public void subscribe(long busId, UserSubscription subscription) {
+        log.info("try subscribe to busId={} useId={}", busId, subscription.getUserId());
         StoppableSemaphore lock = lockManager.getLock(busId)
                 .orElseThrow(() -> new DomainException(BusErrors.BUS_NOT_INITIATED));
         boolean alreadyReleased = false;
@@ -39,7 +40,9 @@ public class BusSubscriptionManager {
             CancelableSubscriber<ByteBuffer> oldSub = busChannel.put(subscription.getUserId(), subscription.getSubscriber());
             if (oldSub != null) {
                 oldSub.cancel();
+                log.info("replace subscriber with old subscriber busId = {}  userId = {}", busId, subscription.getUserId());
             }
+            log.info("subscribed to busId={} useId={}", busId, subscription.getUserId());
             publishers.computeIfPresent(busId, (key, publisher) -> {
                 publisher.subscribe(subscription.getSubscriber());
                 return publisher;
@@ -50,6 +53,8 @@ public class BusSubscriptionManager {
         } finally {
             if (!alreadyReleased) {
                 lock.release();
+            } else {
+                log.info("try to release already sema when subscribe");
             }
         }
     }
@@ -76,12 +81,14 @@ public class BusSubscriptionManager {
         } finally {
             if (!alreadyReleased) {
                 lock.release();
+            } else {
+                log.info("try to release already sema when published");
             }
         }
     }
 
     public void unsubscribe(Long busId, Long userId) {
-        log.info("unsubscribe: busId={}, userId={}", busId, userId);
+        log.info("try unsubscribe: busId={}, userId={}, subsize: {}", busId, userId, subscribers.size());
         StoppableSemaphore lock = lockManager.getLock(busId)
                 .orElseThrow(() -> new DomainException(BusErrors.BUS_NOT_INITIATED));
         boolean alreadyReleased = false;
@@ -98,12 +105,15 @@ public class BusSubscriptionManager {
                 log.info("after unsubscribe: {} size={}", busId, busChannel.size());
                 return busChannel;
             });
+            log.info("unsubscribed busId={}, userId={}", busId, userId);
         } catch (Exception e) {
             log.info(e.getMessage());
             throw new DomainException(BusErrors.BUS_UNSUBSCRIBE_ERROR);
         } finally {
             if (!alreadyReleased) {
                 lock.release();
+            } else {
+                log.info("try to release already sema when unsubscribe");
             }
         }
     }
